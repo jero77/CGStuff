@@ -1,12 +1,16 @@
 
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+
 import javax.swing.JFrame;
+
 import com.jogamp.opengl.*;
 import com.jogamp.opengl.awt.*;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
 
 
-public class Main implements GLEventListener {
+public class Main implements GLEventListener, KeyListener {
 
 
 	/*
@@ -213,6 +217,29 @@ public class Main implements GLEventListener {
 	}
 
 
+
+	@Override
+	public void keyPressed(KeyEvent arg0) {
+		// TODO Auto-generated method stub
+		
+	}
+
+
+	@Override
+	public void keyReleased(KeyEvent arg0) {
+		// TODO Auto-generated method stub
+		
+	}
+
+
+	@Override
+	public void keyTyped(KeyEvent arg0) {
+		// TODO Auto-generated method stub
+		
+	}
+	
+	
+	
 	/*
 	 * Main Method
 	 */
@@ -243,6 +270,8 @@ public class Main implements GLEventListener {
 		final FPSAnimator animator = new FPSAnimator( glcanvas, 300, true);
 		animator.start();	//start animation
 	}
+
+
 
 
 }
