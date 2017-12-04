@@ -153,7 +153,7 @@ public class Main implements GLEventListener {
 
 
 	/*
-	 * Draw a cube with side length 1 around the point of origin (0,0,0)
+	 * Draw a cube with side length 1 around the point of origin (0,0,0).
 	 */
 	public void drawCube(GL2 gl) {
 
