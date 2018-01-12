@@ -1,161 +1,279 @@
+import static javax.swing.JFrame.EXIT_ON_CLOSE;
 
+import java.awt.BorderLayout;
+import java.awt.Font;
+import java.awt.Label;
+import java.awt.TextField;
+import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.event.MouseMotionListener;
 
 import javax.swing.JFrame;
 
-import com.jogamp.opengl.*;
-import com.jogamp.opengl.awt.*;
+import com.jogamp.opengl.GL2;
+import com.jogamp.opengl.GLAutoDrawable;
+import com.jogamp.opengl.GLEventListener;
+import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
+import com.jogamp.opengl.util.awt.TextRenderer;
 
+/*
+key control:
 
-public class Main implements GLEventListener, KeyListener {
+c - reset camera position and orientation
 
+arrow-up 	- move forward
+arrow-down 	- move backward
+arrow-left 	- move left
+arrow-right - move right
+page-up 	- move up
+page-down 	- move down
 
+a - rotate left
+d - rotate right
+w - rotate up
+s - rotate down
+
+b - toggle ground
+capslock - toggle mouse rotation (capslock on -> mouse rotation off)
+
+Mouse rotation (mouse move) of the cube only when shift is down
+Mouse rotation (mouse dragged) of cube only when control is down
+*/
+
+public class Main implements GLEventListener, KeyListener, MouseListener, MouseMotionListener  {
+
+	// create an instance of GL Utility library and keep it
+	private static final GLU glu = new GLU();
+	
+	//Camera variables
+	private static float camera_position[] = {0.0f, 1.0f, -10.0f};
+	private static float center_position[] = {0.0f, 1.0f, 0.0f};
+	private static float camera_orientation[] = {0.0f, 1.0f, 0.0f};
+	
+	// speed for camera movement
+	private static float speed = 0.2f;
+	// camera angle increment in degrees
+	private static float angle_incr = 1.0f;
+	private static float rotx = 0.0f, roty = 0.0f;
+	
+	//Cube rotation
+	private static float cube_incr = 3.0f;
+	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
+	private static int mouseX = 0, mouseY = 0;
+	
+	//Text field
+	private static TextField tf;
+	
+	//Boolean flag for toggling
+	private static boolean toggleGround = false;
+	
+	//Renderer
+	private static TextRenderer renderer; 
+	private static boolean rendererActivated = false;
+	private static int rendererX, rendererY;
+	private static int canvasHeight;
+	
+	//FPS calculation
+	private static long initialTime;
+	private static long lastTime;
+	private static int frames, fps;
+	
+	
 	/*
-	 * Global Constants & Variables
+	 * Main function
 	 */
-	//Constants for framesize
-	private static final int WIDTH = 800;
-	private static final int HEIGHT = 600;
+	public static void main(String[] args) {
+		// create OpenGL window
+		GLCanvas canvas = new GLCanvas();
+		canvas.addGLEventListener(new Main());
+		canvas.addKeyListener(new Main());
+		canvas.addMouseListener(new Main());
+		canvas.addMouseMotionListener(new Main());
 
-	//GLU object
-	private GLU glu = new GLU();
+		// animate the canvas with 60 frames per second
+		FPSAnimator animator = new FPSAnimator(canvas, 60, true);
+		animator.start();
+		
+		final int width = 800;
+	    final int height = 600;
+	    tf = new TextField(30);
+	    Label label = new Label("Press shift and drag the mouse to move the cube");
+	    
+	    //Init renderer
+	    Font font = new Font("TimesRoman", Font.BOLD, 16);
+	    renderer = new TextRenderer(font);
+		
+		// create main window and insert the canvas into it
+		JFrame frame = new JFrame("OpenGL Fenster");
+		frame.setSize(width, height);
+		frame.setDefaultCloseOperation(EXIT_ON_CLOSE);
+		frame.getContentPane().add(canvas);
+		frame.add(tf, BorderLayout.SOUTH);
+		frame.add(label, BorderLayout.NORTH);
+		
+		// show the main window
+		frame.setVisible(true);
+		
+		// set input focus to the canvas
+		canvas.setFocusable(true);
+		canvas.requestFocus();
+		
+		//init fps calculation
+		initialTime = System.currentTimeMillis();
+		lastTime = initialTime;
+		
+		//Needed for Renderer drawing point
+		canvasHeight = canvas.getHeight();
+	}
 
-
-	//Variables for rotation of cube
-	private float rotx = 0.0f, roty = 0.0f;
-
-
-	//Constants for the background color of the window (2.)
-	//Name			Hex		R		G		B
-	//DodgerBlue	1E90FF	0.118	0.565	1.000
-	private static final float
-		BACK_R = 0.118f, BACK_G = 0.565f, BACK_B = 1.0f, BACK_A = 1.0f;
-
-
-	//Variable for time management
-	long timerstart;
-
-
-
-
-	/*
-	 * Overwritten Methods from the interface GLEventListener
-	 */
-
-	@Override
+	
 	public void init(GLAutoDrawable drawable) {
-		// TODO Auto-generated method stub
 		GL2 gl = drawable.getGL().getGL2();
-
-		//Set the background color according to the in 'Constants'
-		//defined values in RGBA format
-		gl.glClearColor(BACK_R, BACK_G, BACK_B, BACK_A);
-
-		//enable depth test
+		
+		// background color
+		gl.glClearColor(0.1f, 0.5f, 0.5f, 1.0f);
+		
+		// enable backface culling (default is off)
+		//gl.glEnable(GL2.GL_CULL_FACE);
+		
+		// enable z-buffer (default is off)
 		gl.glEnable(GL2.GL_DEPTH_TEST);
-
-		//set the timer start
-		timerstart = System.currentTimeMillis();
 	}
-
-
-	@Override
-	public void dispose(GLAutoDrawable drawable) {
-		// TODO Auto-generated method stub
-
-	}
-
-
-	@Override
+	
+	
 	public void display(GLAutoDrawable drawable) {
 
 		GL2 gl = drawable.getGL().getGL2();
+		
+		
+		//Calculate time since start of simulation
+		long currentTime = System.currentTimeMillis();
+		float timeDiff = (currentTime - initialTime) / 1000.f;
+		
+		frames++;
+		
+		//Measure FPS once per sec
+		if (currentTime - lastTime > 1000) {
+		
+			fps = (int) (frames / ((currentTime - lastTime) / 1000.f));
+			//System.out.println("time="+timeDiff+", fps="+fps);
 
-		//Clear color and depth buffer
-		gl.glClear(GL2.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
-
-
-
-		//for the 1st cube
+			//Update variables
+			lastTime = currentTime;
+			frames = 0;
+			
+		}
+		
+		
+		
+		// clear the framebuffer
+		gl.glClear(GL2.GL_COLOR_BUFFER_BIT | GL2.GL_DEPTH_BUFFER_BIT);
+		
+		// place object into the scene
 		gl.glLoadIdentity();
-		gl.glPushMatrix();		//push matrix on the stack
-
-		//Translation into the depth (neg. Z-axis)
-		gl.glTranslatef( 0.0f, 0.0f, -3.0f);
-
-		//Rotate with angle defined by rotx or roty,
-		//rotate around x-axis and y-axis simultaneously
+		
 		gl.glRotatef(rotx, 1.0f, 0.0f, 0.0f);
 		gl.glRotatef(roty, 0.0f, 1.0f, 0.0f);
-
-		//draw it
-		drawCube(gl);
-		gl.glPopMatrix();		//pop matrix from the stack
-
-
-		//for the 2nd cube
-		//only if runtime is between 5-10s, 15-20s, 25-30s,...
-		long runtime = System.currentTimeMillis() - timerstart;
-		if  (runtime / 1000.0 >= 5) {
-
-			gl.glLoadIdentity();	//reset matrix
-			gl.glPushMatrix();		//push matrix on the stack
-
-			//Translation to a point behind the 1st cube
-			gl.glTranslatef( 3.0f, -1.5f, -7.0f);
-
-			//Rotate with angle defined by rotx or roty, rotate around
-			//x-axis and y-axis simultaneously (rotx / 2 -> slower)
-			gl.glRotatef(rotx / 2, 1.0f, -1.0f, 0.0f);
-
-			//scale it smaller
-			gl.glScaled(0.5, 0.5, 0.5);
-
-			//draw it
+		
+		glu.gluLookAt(	camera_position[0], camera_position[1], camera_position[2],
+						center_position[0], center_position[1], center_position[2],
+						camera_orientation[0], camera_orientation[1], camera_orientation[2]);
+		
+		//Ground
+		gl.glPushMatrix();
+			gl.glTranslatef(0.0f, 0.0f, -2.0f);
+			drawGround(gl);
+		gl.glPopMatrix();
+	 
+		//Cube
+		gl.glPushMatrix();
+			gl.glTranslatef(0.0f, 1.0f, -2.0f);
+			gl.glRotatef(cube_rotx, 1.0f, 0.0f, 0.0f);
+			gl.glRotatef(cube_roty, 0.0f, 1.0f, 0.0f);
+			gl.glRotatef(cube_rotz, 0.0f, 0.0f, 1.0f);
 			drawCube(gl);
-			gl.glPopMatrix();
+		gl.glPopMatrix();
+		
+		
+		//Renderer activated? Then draw fps on screen
+		if (rendererActivated) {
+			renderer.beginRendering(drawable.getSurfaceWidth(), drawable.getSurfaceHeight());
+			renderer.setColor(1.0f, 0.0f, 0.0f, 0.8f);
+			renderer.draw("FPS: "+fps, rendererX, rendererY);
+			renderer.endRendering();
 		}
-
-		//reset timerstart if >= 10s
-		if (runtime / 1000.0 >= 10)
-			timerstart = System.currentTimeMillis();
-
-		//finish
+		
+		
+		
+		//Finish
 		gl.glFlush();
-
-
-		//Increment rotx and roty
-		rotx += 0.5f;
-		roty += 0.6f;
-
+	}
+	
+	/**
+	 * When the window changes its position or shape the projection transformation
+	 * and viewport dimensions have to be adjusted accordingly.
+	 */
+	public void reshape(GLAutoDrawable drawable, int x, int y, int width, int height) {
+		GL2 gl = drawable.getGL().getGL2();
+		
+		// set viewport to window dimensions
+		gl.glViewport(0, 0, width, height);
+		
+		gl.glMatrixMode(GL2.GL_PROJECTION);
+		gl.glLoadIdentity();
+		
+		// set perspective projection
+		glu.gluPerspective(45.0f, (float) width / (float) height, 1.0f, 20.0f);
+		
+		gl.glMatrixMode(GL2.GL_MODELVIEW);
+		gl.glLoadIdentity();
 	}
 
 
-	@Override
-	public void reshape(GLAutoDrawable drawable, int x, int y, int width,
-			int height) {
-
-		final GL2 gl = drawable.getGL().getGL2();
-
-		//Aspect ratio of perspective frame
-		final float h = (float) width / (float) height;
-
-		gl.glViewport(0, 0, width, height);		//viewport size
-		gl.glMatrixMode(GL2.GL_PROJECTION);		//use projection matrix
-		gl.glLoadIdentity();					//reset projection matrix
-
-		//set the camera parameter:
-		//(Y-axis), aspect ratio, near & far clipping plane
-		glu.gluPerspective(45.0f, h, 1.0f, 20.0f);
-
-		gl.glMatrixMode(GL2.GL_MODELVIEW);		//use modelview matrix
-		gl.glLoadIdentity();					//reset modelview matrix
+	
+	// draw a ground
+	void drawGround(GL2 gl) {
+		
+		if (!toggleGround) {
+			gl.glBegin(GL2.GL_QUADS);
+				gl.glColor3f(1.0f, 0.0f, 0.0f);		//Red
+				gl.glVertex3f(-5.0f, 0.0f, 5.0f);
+				gl.glColor3f(1.0f, 0.5f, 0.0f);		//Orange
+				gl.glVertex3f( 5.0f, 0.0f, 5.0f);
+				gl.glColor3f(0.5f, 0.0f, 0.5f);		//Purple
+				gl.glVertex3f( 5.0f, 0.0f,-5.0f);
+				gl.glColor3f(0.0f, 1.0f, 0.5f);		//Green
+				gl.glVertex3f(-5.0f, 0.0f,-5.0f);
+			gl.glEnd();
+		} else {
+			float 	x1 = -1000.f, x2 = 1000.f, z1 = -1000.f, z2 = 1000.f;
+			float width = 0.5f;
+			
+			//Draw grid
+			gl.glBegin(GL2.GL_LINES);
+				gl.glColor3f(0.f, 0.f, 0.f);
+				
+				//Draw parallel to the z-axis
+				for (float x = x1; x <= x2; x += width) {
+					gl.glVertex3f(x, 0.f, z1);
+					gl.glVertex3f(x, 0.f, z2);
+				}
+				
+				//Draw parallel to the x-axis
+				for (float z = z1; z <= z2; z += width) {
+					gl.glVertex3f(x1, 0.f, z);
+					gl.glVertex3f(x2, 0.f, z);
+				}
+			gl.glEnd();
+		}
 	}
 
-
+	
 	/*
 	 * Draw a cube with side length 1 around the point of origin (0,0,0).
 	 */
@@ -215,63 +333,205 @@ public class Main implements GLEventListener, KeyListener {
 		gl.glEnd();	//Done drawing
 
 	}
-
-
-
+	
+	
 	@Override
-	public void keyPressed(KeyEvent arg0) {
-		// TODO Auto-generated method stub
+	public void keyPressed(KeyEvent e) {
+		int keyCode = e.getKeyCode();
 		
+		// move backward
+		if (keyCode == KeyEvent.VK_DOWN) {
+			camera_position[2] -= speed;
+			center_position[2] -= speed;
+		}
+		
+		else if (keyCode == KeyEvent.VK_UP) {
+			camera_position[2] += speed;
+			center_position[2] += speed;
+		}
+		
+		// move left
+		else if (keyCode == KeyEvent.VK_LEFT) {
+			camera_position[0] += speed;
+			center_position[0] += speed;
+		}
+		
+		// move right
+		else if (keyCode == KeyEvent.VK_RIGHT) {
+			camera_position[0] -= speed;
+			center_position[0] -= speed;
+		}
+		
+		// move up
+		else if (keyCode == KeyEvent.VK_PAGE_UP) {
+			camera_position[1] += speed;
+			center_position[1] += speed;
+		}
+		
+		// move down
+		else if (keyCode == KeyEvent.VK_PAGE_DOWN) {
+			camera_position[1] -= speed;
+			center_position[1] -= speed;
+		}
+		
+		// turn left
+		else if (keyCode == KeyEvent.VK_A) {
+			System.out.print("left: ");
+			roty -= angle_incr;
+			System.out.println(roty);
+			if (roty < -360.0f) roty += 360.0f;
+		}
+		
+		// turn right
+		else if (keyCode == KeyEvent.VK_D) {
+			roty += angle_incr;
+			if (roty > 360.0f) roty -= 360.0f;
+		}
+		
+		// turn up
+		else if (keyCode == KeyEvent.VK_W) {
+			rotx -= angle_incr;
+			if (rotx < -360.0f) rotx += 360.0f;
+		}
+		
+		// turn down
+		else if (keyCode == KeyEvent.VK_S) {
+			rotx += angle_incr;
+			if (rotx > 360.0f) rotx -= 360.0f;
+		}
+		
+		//toggle ground
+		else if (keyCode == KeyEvent.VK_B) {
+			toggleGround = !toggleGround;
+		}
+		
+		// reset the camera position and orientation
+		else if (keyCode == KeyEvent.VK_C) {
+			camera_position[0] = 0.0f;
+			camera_position[1] = 1.0f;
+			camera_position[2] = -10.0f;
+			
+			center_position[0] = 0.0f;
+			center_position[1] = 1.0f;
+			center_position[2] = 0.0f;
+			
+			camera_orientation[0] = 0.0f;
+			camera_orientation[1] = 1.0f;
+			camera_orientation[2] = 0.0f;
+			
+			rotx = 0.0f;
+			roty = 0.0f;
+		}
 	}
-
 
 	@Override
 	public void keyReleased(KeyEvent arg0) {
-		// TODO Auto-generated method stub
+		int keyCode = arg0.getKeyCode();
+		
+		if (keyCode == KeyEvent.VK_DOWN) {
+		}
+	}
+	
+	@Override
+	public void keyTyped(KeyEvent arg1) {
+		int keyCo = arg1.getKeyCode();
+		if (keyCo == KeyEvent.VK_A) {
+		}
 		
 	}
-
 
 	@Override
-	public void keyTyped(KeyEvent arg0) {
-		// TODO Auto-generated method stub
+	public void dispose(GLAutoDrawable drawable) {
 		
 	}
-	
-	
-	
-	/*
-	 * Main Method
-	 */
-	public static void main(String[] args) {
 
-		//instantiate OpenGL functionality
-		final GLProfile profile = GLProfile.get(GLProfile.GL2);
-		GLCapabilities gcaps = new GLCapabilities(profile);
-
-		//create glcanvas
-		final GLCanvas glcanvas = new GLCanvas(gcaps);
-
-		//construct object Main
-		Main m = new Main();
-		glcanvas.addGLEventListener(m);
-
-		//create frame & add GLCanvas
-		final JFrame frame = new JFrame("OpenGL");
-		frame.getContentPane().add(glcanvas);
-
-		//set frame properties & make it visible
-		frame.setSize(WIDTH, HEIGHT);
-		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		frame.setVisible(true);
-
-		//instantiate FPSAnimator for animation support
-		//Params: GLAutoDrawable object, int fps, boolean schedule at fixed rate
-		final FPSAnimator animator = new FPSAnimator( glcanvas, 300, true);
-		animator.start();	//start animation
+	@Override
+	public void mouseClicked(MouseEvent e) {
+		//Activate the renderer once, prints the fps at the location clicked at
+		if (!rendererActivated) {
+			rendererActivated = true;
+			rendererX = e.getX();
+			//Need to flip y coordinate (TextRenderer starts at lowerleft corner,
+			//  Canvas starts at upperleft corner!)
+			rendererY = canvasHeight - e.getY();
+		}
 	}
 
+	@Override
+	public void mousePressed(MouseEvent e) {
+		 
+	}
 
+	@Override
+	public void mouseReleased(MouseEvent e) {
+		
+	}
 
+	@Override
+	public void mouseEntered(MouseEvent e) {
+		
+	}
 
+	@Override
+	public void mouseExited(MouseEvent e) {
+		
+	}
+
+	@Override
+	public void mouseDragged(MouseEvent e) {
+		
+		//only do cube rotation if ctrl is down & capslock is NOT on
+		boolean capsOn = Toolkit.getDefaultToolkit().getLockingKeyState(KeyEvent.VK_CAPS_LOCK);
+		if (e.isControlDown() && !capsOn) {
+			
+			//save old mouse coordinates
+			int oldMouseX = mouseX;
+			int oldMouseY = mouseY;
+			
+			//Get mouse coordinates
+			mouseX = e.getX();
+			mouseY = e.getY();
+			
+			int diff = mouseX - oldMouseX;
+			if (diff > 0) 						//Mouse moved to the right
+				cube_roty += cube_incr;			//Rotate cube to the right
+			else if (diff < 0)					//Mouse moved to the left
+				cube_roty -= cube_incr;			//Rotate cube to the left
+			
+			diff = mouseY - oldMouseY;
+			if (diff > 0)						//Mouse moved up
+				cube_rotx -= cube_incr;			//Rotate cube up
+			else if (diff < 0)					//Mouse moved down
+				cube_rotx += cube_incr;			//Rotate cube down
+		}
+	}
+
+	@Override
+	public void mouseMoved(MouseEvent e) {
+		
+		//only do cube rotation if shift is down & capslock is NOT on
+		boolean capsOn = Toolkit.getDefaultToolkit().getLockingKeyState(KeyEvent.VK_CAPS_LOCK);
+		if (e.isShiftDown() && ! capsOn) {
+			
+			//save old mouse coordinates
+			int oldMouseX = mouseX;
+			int oldMouseY = mouseY;
+			
+			//Get mouse coordinates
+			mouseX = e.getX();
+			mouseY = e.getY();
+			
+			int diff = mouseX - oldMouseX;
+			if (diff > 0) 						//Mouse moved to the right
+				cube_roty += cube_incr;			//Rotate cube to the right
+			else if (diff < 0)					//Mouse moved to the left
+				cube_roty -= cube_incr;			//Rotate cube to the left
+			
+			diff = mouseY - oldMouseY;
+			if (diff > 0)						//Mouse moved up
+				cube_rotx -= cube_incr;			//Rotate cube up
+			else if (diff < 0)					//Mouse moved down
+				cube_rotx += cube_incr;			//Rotate cube down
+		}
+	}
 }
