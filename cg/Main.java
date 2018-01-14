@@ -20,6 +20,7 @@ import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
 import com.jogamp.opengl.util.awt.TextRenderer;
+import com.jogamp.opengl.util.gl2.GLUT;
 
 /*
 key control:
@@ -47,24 +48,21 @@ Mouse rotation (mouse dragged) of cube only when control is down
 
 public class Main implements GLEventListener, KeyListener, MouseListener, MouseMotionListener  {
 
-	// create an instance of GL Utility library and keep it
+	//create an instance of GL Utility library and keep it
 	private static final GLU glu = new GLU();
+	//create an instance of GL Utility toolkit
+	private static final GLUT glut = new GLUT();
 	
 	//Camera variables
 	private static float camera_position[] = {0.0f, 1.0f, -10.0f};
 	private static float center_position[] = {0.0f, 1.0f, 0.0f};
 	private static float camera_orientation[] = {0.0f, 1.0f, 0.0f};
 	
-	// speed for camera movement
+	//speed for camera movement
 	private static float speed = 0.2f;
-	// camera angle increment in degrees
+	//camera angle increment in degrees
 	private static float angle_incr = 1.0f;
 	private static float rotx = 0.0f, roty = 0.0f;
-	
-	//Cube rotation
-	private static float cube_incr = 3.0f;
-	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
-	private static int mouseX = 0, mouseY = 0;
 	
 	//Text field
 	private static TextField tf;
@@ -82,6 +80,28 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	private static long initialTime;
 	private static long lastTime;
 	private static int frames, fps;
+	
+	
+	//Light calculation - variables for properties
+	//	First light source: light0 (spotlight)
+	//	Position: w=0->directed light source (position=dir.) 
+	private static float light0_ambient[] = {0.0f, 0.0f, 0.0f, 1.0f};	//RGBA
+	private static float light0_diffuse[] = {1.0f, 1.0f, 1.0f, 1.0f};	//RGBA
+	private static float light0_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};	//RGBA
+	private static float light0_emissive[] = {1.0f, 1.0f, 1.0f, 1.0f};	//RGBA
+	private static float light0_position[] = {0.0f, 4.0f, -2.0f, 1.0f};	//XYZW (homogene)
+	private static float light0_direction[] = {0.0f, 0.0f, 0.0f};		//XYZ, always directed to center of cube!
+	private static float light0_cutoff = 15.0f;
+	private static float light0_exponent = 0.0f;
+	
+	
+	//Variables for cube
+	//	Center of cube
+	private static float cube_center[] = {0.0f, 0.5f, -2.0f};
+	//	Cube rotation
+	private static float cube_incr = 3.0f;
+	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
+	private static int mouseX = 0, mouseY = 0;
 	
 	
 	/*
@@ -102,7 +122,8 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		final int width = 800;
 	    final int height = 600;
 	    tf = new TextField(30);
-	    Label label = new Label("Press shift and drag the mouse to move the cube");
+	    Label label = new Label("Press shift & move the mouse or press ctrl"
+	    					+ "& drag the mouse to move the cube");
 	    
 	    //Init renderer
 	    Font font = new Font("TimesRoman", Font.BOLD, 16);
@@ -143,6 +164,12 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		// enable z-buffer (default is off)
 		gl.glEnable(GL2.GL_DEPTH_TEST);
+		
+		//For light calculation
+		gl.glEnable(GL2.GL_LIGHTING);
+		initLights(gl);
+		gl.glEnable(GL2.GL_NORMALIZE);
+	
 	}
 	
 	
@@ -183,6 +210,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		glu.gluLookAt(	camera_position[0], camera_position[1], camera_position[2],
 						center_position[0], center_position[1], center_position[2],
 						camera_orientation[0], camera_orientation[1], camera_orientation[2]);
+
 		
 		//Ground
 		gl.glPushMatrix();
@@ -190,16 +218,49 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			drawGround(gl);
 		gl.glPopMatrix();
 	 
-		//Cube
+		//Cube (Material Ruby, blending -> ruby is transparent)
+		gl.glEnable(GL2.GL_BLEND);
+		gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		gl.glPushMatrix();
-			gl.glTranslatef(0.0f, 1.0f, -2.0f);
+			gl.glTranslatef(cube_center[0], cube_center[1], cube_center[2]);
 			gl.glRotatef(cube_rotx, 1.0f, 0.0f, 0.0f);
 			gl.glRotatef(cube_roty, 0.0f, 1.0f, 0.0f);
 			gl.glRotatef(cube_rotz, 0.0f, 0.0f, 1.0f);
 			drawCube(gl);
 		gl.glPopMatrix();
+		gl.glDisable(GL2.GL_BLEND);
 		
 		
+		
+		
+		//Glut Solid Cone (white) at position of the light source (light0)
+		float cone_radius = 1.0f;
+		float cone_height = 1.0f;
+		
+		gl.glEnable(GL2.GL_COLOR_MATERIAL);
+		gl.glPushMatrix();
+		
+			//rotate the cone so that it is directed towards the center of the cube
+			//angle = acos((v1 dot product v2) / (|v1|*|v2|)), v1 = light0_direction
+			//v2 = (0,0,-1) is height of glut solid cone (along neg. z-axis)
+			getLight0Dir();
+			float dotprod = -1.0f * light0_direction[2];
+			float lengthv1 = (float) Math.sqrt(Math.pow(light0_direction[0], 2) + 
+					Math.pow(light0_direction[1], 2) + Math.pow(light0_direction[2], 2));
+			float lengthv2 = (float) Math.sqrt(Math.pow(-1, 2));
+			float angle = (float) Math.acos(dotprod / (lengthv1 * lengthv2));
+			gl.glRotatef(angle, light0_direction[0], light0_direction[1], light0_direction[2]);
+		
+			//translation to light0's position (z coord. - cone_height = top of cone at lightpos.)
+			gl.glTranslatef(light0_position[0], light0_position[1], light0_position[2] - cone_height);
+			
+			//draw the cone
+			gl.glColor3f(1.0f, 1.0f, 1.0f);
+			glut.glutSolidCone(cone_radius, cone_height, 10, 10);
+		gl.glPopMatrix();
+		gl.glDisable(GL2.GL_COLOR_MATERIAL);
+			
+			
 		//Renderer activated? Then draw fps on screen
 		if (rendererActivated) {
 			renderer.beginRendering(drawable.getSurfaceWidth(), drawable.getSurfaceHeight());
@@ -207,7 +268,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			renderer.draw("FPS: "+fps, rendererX, rendererY);
 			renderer.endRendering();
 		}
-		
 		
 		
 		//Finish
@@ -235,28 +295,74 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	}
 
 
+	/*
+	 * Init all the needed light sources.
+	 */
+	private void initLights(GL2 gl) {
+		//Init Light0
+		//Ambient part of the light
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_AMBIENT, light0_ambient, 0);
+		//Diffuse part of the light
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_DIFFUSE, light0_diffuse, 0);
+		//Specular part of the light
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPECULAR, light0_specular, 0);
+		//Emissive part of the light
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_EMISSION, light0_emissive, 0);
+		
+		
+		//Position of the light
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_POSITION, light0_position, 0);
+		
+		//Cutoff of the light
+		gl.glLightf(GL2.GL_LIGHT0, GL2.GL_SPOT_CUTOFF, light0_cutoff);
+		//Exponent of the light
+		gl.glLightf(GL2.GL_LIGHT0, GL2.GL_SPOT_EXPONENT, light0_exponent);
+		
+		//Direction of the light: towards the center of the cube
+		getLight0Dir();
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPOT_DIRECTION, light0_direction, 0);
+		
+		//No attenuation
+		gl.glLightf(GL2.GL_LIGHT0, GL2.GL_CONSTANT_ATTENUATION, 1.0f);
+		
+		//Enable the lights initalized before
+		gl.glEnable(GL2.GL_LIGHT0);
+	}
+	
 	
 	// draw a ground
-	void drawGround(GL2 gl) {
+	public void drawGround(GL2 gl) {
+
+		//Material for ground: chrome
+		float ambient[] = {0.25f, 0.25f, 0.25f, 1.0f};
+		float diffuse[] = {0.4f, 0.4f, 0.4f, 1.0f};
+		float specular[] = {0.77f, 0.77f, 0.77f, 1.0f};
+		float shininess = 76.8f;
+		
+		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
+		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_DIFFUSE, diffuse, 0);
+		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_SPECULAR, specular, 0);
+		gl.glMaterialf(GL2.GL_FRONT, GL2.GL_SHININESS, shininess);
+		
 		
 		if (!toggleGround) {
 			gl.glBegin(GL2.GL_QUADS);
-				gl.glColor3f(1.0f, 0.0f, 0.0f);		//Red
+				gl.glNormal3f(0.0f, 1.0f, 0.0f);	//Normal of the ground
 				gl.glVertex3f(-5.0f, 0.0f, 5.0f);
-				gl.glColor3f(1.0f, 0.5f, 0.0f);		//Orange
 				gl.glVertex3f( 5.0f, 0.0f, 5.0f);
-				gl.glColor3f(0.5f, 0.0f, 0.5f);		//Purple
 				gl.glVertex3f( 5.0f, 0.0f,-5.0f);
-				gl.glColor3f(0.0f, 1.0f, 0.5f);		//Green
 				gl.glVertex3f(-5.0f, 0.0f,-5.0f);
 			gl.glEnd();
 		} else {
+			
+			//Grid ground
 			float 	x1 = -1000.f, x2 = 1000.f, z1 = -1000.f, z2 = 1000.f;
 			float width = 0.5f;
 			
 			//Draw grid
 			gl.glBegin(GL2.GL_LINES);
 				gl.glColor3f(0.f, 0.f, 0.f);
+				gl.glNormal3f(0.0f, 1.0f, 0.0f);	//Normal
 				
 				//Draw parallel to the z-axis
 				for (float x = x1; x <= x2; x += width) {
@@ -273,7 +379,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		}
 	}
 
-	
 	/*
 	 * Draw a cube with side length 1 around the point of origin (0,0,0).
 	 */
@@ -286,52 +391,96 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		//constants for depth (z) constraints
 		final float FRONT_Z = 0.5f, BACK_Z = -0.5f;
 
-
-		//draw cube
+		//material for the cube: ruby
+		float ambient[] = {0.17f, 0.01f, 0.01f, 0.5f};
+		float diffuse[] = {0.61f, 0.04f, 0.04f, 0.5f};
+		float specular[] = {0.73f, 0.63f, 0.63f, 0.5f};
+		float shininess = 76.8f;
+		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
+		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_DIFFUSE, diffuse, 0);
+		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_SPECULAR, specular, 0);
+		gl.glMaterialf(GL2.GL_FRONT, GL2.GL_SHININESS, shininess);
+		
+		
+		//draw cube with normal vectors
 		gl.glBegin(GL2.GL_QUADS);
 			//front
 			gl.glColor3f(0, 0, 0);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, FRONT_Z);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, FRONT_Z);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(RIGHT_X, LOWER_Y, FRONT_Z);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, FRONT_Z);
 
 			//left side
 			gl.glColor3f(1, 0, 0);
+			gl.glNormal3f(-1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, FRONT_Z);
+			gl.glNormal3f(-1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, BACK_Z);
+			gl.glNormal3f(-1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, BACK_Z);
+			gl.glNormal3f(-1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, FRONT_Z);
 
 			//right side
 			gl.glColor3f(0, 1, 0);
+			gl.glNormal3f(1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, FRONT_Z);
+			gl.glNormal3f(1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, BACK_Z);
+			gl.glNormal3f(1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, LOWER_Y, BACK_Z);
+			gl.glNormal3f(1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, LOWER_Y, FRONT_Z);
 
 			//back side
 			gl.glColor3f(0, 0, 1);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(RIGHT_X, LOWER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, BACK_Z);
 
 			//top side
 			gl.glColor3f(0, 1, 1);
+			gl.glNormal3f(0.0f, 1.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, FRONT_Z);
+			gl.glNormal3f(0.0f, 1.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 1.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 1.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, FRONT_Z);
 
 			//bottom side
 			gl.glColor3f(1, 0, 1);
+			gl.glNormal3f(0.0f, 0.0f, -1.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, FRONT_Z);
+			gl.glNormal3f(0.0f, 0.0f, -1.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 0.0f, -1.0f);
 			gl.glVertex3f(RIGHT_X, LOWER_Y, BACK_Z);
+			gl.glNormal3f(0.0f, 0.0f, -1.0f);
 			gl.glVertex3f(RIGHT_X, LOWER_Y, FRONT_Z);
 		gl.glEnd();	//Done drawing
 
+	}
+	
+	/*
+	 * Calculate the direction for light0 (from light0_position to center of the cube).
+	 * Saves the calculated directions in the float array light0_direction.
+	 */
+	private void getLight0Dir() {
+		//Calculate light position minus cubecenter for each coordinate XYZ
+		for (int i = 0; i < 3; i++)
+			light0_direction[i] = light0_position[i] - cube_center[i]; 
 	}
 	
 	
@@ -376,9 +525,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		// turn left
 		else if (keyCode == KeyEvent.VK_A) {
-			System.out.print("left: ");
 			roty -= angle_incr;
-			System.out.println(roty);
 			if (roty < -360.0f) roty += 360.0f;
 		}
 		
