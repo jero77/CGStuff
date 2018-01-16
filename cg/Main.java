@@ -46,6 +46,12 @@ capslock - toggle mouse rotation (capslock on -> mouse rotation off)
 
 Mouse rotation (mouse move) of the cube only when shift is down
 Mouse rotation (mouse dragged) of cube only when control is down
+
+
+i - move light up
+j - move light left
+k - move light down
+l - move light right
 */
 
 public class Main implements GLEventListener, KeyListener, MouseListener, MouseMotionListener  {
