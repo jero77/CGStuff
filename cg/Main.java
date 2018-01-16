@@ -10,6 +10,7 @@ import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
+import java.util.Arrays;
 
 import javax.swing.JFrame;
 
@@ -84,21 +85,21 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	
 	
 	//Light calculation - variables for properties
-	//	First light source: light0 (spotlight)
-	//	Position: w=0->directed light source (position=dir.) 
-	private static float light0_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};	//RGBA
-	private static float light0_diffuse[] = {1.0f, 1.0f, 1.0f, 1.0f};	//RGBA
-	private static float light0_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};	//RGBA
-	private static float light0_emissive[] = {1.0f, 1.0f, 1.0f, 1.0f};	//RGBA
-	private static float light0_position[] = {0.0f, 5.0f, 2.0f, 1.0f};	//XYZW (homogene)
-	private static float light0_direction[] = {0.0f, 0.0f, 0.0f};		//XYZ, always directed to center of cube!
+	//	First light source: light0 (spotlight directed to center of cube)
+	//	Position: w=0->directed light source (position=direction) 
+	private static float light0_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};		//RGBA
+	private static float light0_diffuse[] = {1.0f, 1.0f, 1.0f, 1.0f};		//RGBA
+	private static float light0_specular[] = {0.75f, 0.75f, 0.75f, 1.0f};	//RGBA
+	private static float light0_emissive[] = {0.8f, 0.8f, 0.8f, 1.0f};		//RGBA
+	private static float light0_position[] = {0.0f, 4.0f, 2.0f, 1.0f};		//XYZW (homogene Coord.)
+	private static float light0_direction[] = {0.0f, 0.0f, 0.0f};			//XYZ
 	private static float light0_cutoff = 25.0f;
-	private static float light0_exponent = 0.0f;
-	
+	private static float light0_exponent = 2.0f;
+	private static float lightspeed = 0.5f;		//Speed for cameramovement
 	
 	//Variables for cube
 	//	Center of cube
-	private static float cube_center[] = {0.0f, 0.5f, -2.0f};
+	private static float cube_center[] = {0.0f, 0.75f, 2.0f};
 	//	Cube rotation
 	private static float cube_incr = 3.0f;
 	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
@@ -171,6 +172,11 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		gl.glEnable(GL2.GL_NORMALIZE);
 		initLights(gl);
 		
+		//For materials
+		gl.glDisable(GL2.GL_COLOR_MATERIAL);
+		gl.glEnable(GL2.GL_BLEND);
+		gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+		
 	}
 	
 	
@@ -215,13 +221,11 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		//Ground
 		gl.glPushMatrix();
-			gl.glTranslatef(0.0f, 0.0f, -2.0f);
+			gl.glTranslatef(0.0f, 0.0f, 2.0f);
 			drawGround(gl);
 		gl.glPopMatrix();
 	 
 		//Cube (Material Ruby, blending -> ruby is transparent)
-		gl.glEnable(GL2.GL_BLEND);
-		gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		gl.glPushMatrix();
 			gl.glTranslatef(cube_center[0], cube_center[1], cube_center[2]);
 			gl.glRotatef(cube_rotx, 1.0f, 0.0f, 0.0f);
@@ -229,16 +233,12 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			gl.glRotatef(cube_rotz, 0.0f, 0.0f, 1.0f);
 			drawCube(gl);
 		gl.glPopMatrix();
-		gl.glDisable(GL2.GL_BLEND);
 		
 		
-		//update light0's direction
-		getLight0Dir();
-		
-		//Visualize light0 with a cone (glut solid cone)
+		//Visualize light0 with a solid cone (also updates light0's pos. & dir.)
 		visualize(gl);
-
-			
+		
+		
 		//Renderer activated? Then draw fps on screen
 		if (rendererActivated) {
 			renderer.beginRendering(drawable.getSurfaceWidth(), drawable.getSurfaceHeight());
@@ -252,7 +252,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		gl.glFlush();
 	}
 	
-	/**
+	/*
 	 * When the window changes its position or shape the projection transformation
 	 * and viewport dimensions have to be adjusted accordingly.
 	 */
@@ -298,13 +298,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		//Direction of the light: towards the center of the cube
 		getLight0Dir();
-		System.out.println(light0_direction[0]+" "+light0_direction[1]+" "+light0_direction[2]);
 		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPOT_DIRECTION, light0_direction, 0);
-		
-		//No attenuation
-		gl.glLightf(GL2.GL_LIGHT0, GL2.GL_CONSTANT_ATTENUATION, 1.0f);
-		
-		
 	}
 	
 	
@@ -372,11 +366,11 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		//constants for depth (z) constraints
 		final float FRONT_Z = 0.5f, BACK_Z = -0.5f;
 
-		//material for the cube: ruby
-		float ambient[] = {0.17f, 0.01f, 0.01f, 0.5f};
-		float diffuse[] = {0.61f, 0.04f, 0.04f, 0.5f};
-		float specular[] = {0.73f, 0.63f, 0.63f, 0.5f};
-		float shininess = 76.8f;
+		//material for the cube: jade
+		float ambient[] = {0.14f, 0.16f, 0.16f, 0.9f};
+		float diffuse[] = {0.54f, 0.89f, 0.63f, 0.9f};
+		float specular[] = {0.32f, 0.32f, 0.32f, 0.32f};
+		float shininess = 12.8f;
 		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
 		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_DIFFUSE, diffuse, 0);
 		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_SPECULAR, specular, 0);
@@ -461,11 +455,10 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	 * Saves the calculated directions in the float array light0_direction.
 	 */
 	private void getLight0Dir() {
-		//Calculate center of the cube minus light0's position for each coordinate XYZ
+		//Calculate vector from the position of the light to the center of the cube
+		//light0_direction = cube_center - light0_position
 		for (int i = 0; i < 3; i++)
-			light0_direction[i] = cube_center[i] - light0_position[i]; 
-		
-		//normalize it
+			light0_direction[i] = cube_center[i] - light0_position[i];
 		VectorUtil.normalizeVec3(light0_direction);
 	}
 	
@@ -479,32 +472,34 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		//Glut Solid Cone (white) to visualize the light source (light0)
 		float cone_radius = 0.4f;
 		float cone_height = 1.0f;
-		int cone_slices = 50;
-		int cone_stacks = 50;
+		int cone_slices = 70;
+		int cone_stacks = 70;
 		
 		
-		//Material: black plastic
-		float ambient[] = {0.0f, 0.0f, 0.0f, 1.0f};
-		float diffuse[] = {0.396f, 0.74151f, 0.69102f, 0.8f};
-		float specular[] = {0.297254f, 0.30829f, 0.306678f, 0.8f};
+		//Material: something transparent
+		float ambient[] = {0.0f, 0.0f, 0.0f, 0.0f};
+		float diffuse[] = {0.4f, 0.4f, 0.4f, 0.4f};
+		float specular[] = {0.3f, 0.3f, 0.3f, 0.4f};
 		float shininess = 32.0f;
 		
 		
 		gl.glPushMatrix();
 		
+			//update light0's position & direction
+			getLight0Dir();
+			gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_POSITION, light0_position, 0);
+			gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPOT_DIRECTION, light0_direction, 0);
+			
 			//translation to light0's position
 			gl.glTranslatef(light0_position[0], light0_position[1], light0_position[2]);
-		
-			//rotate the cone so that its base area is orthogonal to light0_direction
-			//Update light0's direction, normalized
-			getLight0Dir();
 			
+			//rotate the cone so that its base area is orthogonal to light0_direction
 			//"direction" of cone (from base to tip), normalized
 			float cone_direction[] = {0.0f, 0.0f, 1.0f};
 			
-			//angle between the vectors = acos(dotproduct of both vectors)
-			float dotProd = VectorUtil.dotVec3(cone_direction, light0_direction);
-			float angle = (float) Math.acos(dotProd);
+			//angle between the vectors = acos(dotproduct of both vectors) in rad!
+			float angle = VectorUtil.angleVec3(cone_direction, light0_direction);
+			angle = angle * 180.0f / (float) Math.PI;
 			
 			//cross product yields (orthogonal) rotation vector, normalized
 			float[] rotVec = new float[3];
@@ -512,8 +507,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			VectorUtil.normalizeVec3(rotVec);
 			
 			//now rotate around the rotation vector
-			gl.glRotatef(angle, rotVec[0], rotVec[1], rotVec[2]);
-			
+			gl.glRotatef(-angle, rotVec[0], rotVec[1], rotVec[2]);
 			
 			//set the material
 			gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
@@ -538,6 +532,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			center_position[2] -= speed;
 		}
 		
+		//move forward
 		else if (keyCode == KeyEvent.VK_UP) {
 			camera_position[2] += speed;
 			center_position[2] += speed;
@@ -612,6 +607,26 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			
 			rotx = 0.0f;
 			roty = 0.0f;
+		}
+		
+		//move light0 up
+		else if (keyCode == KeyEvent.VK_I) {
+			light0_position[1] += lightspeed;
+		}
+		
+		//move light0 left 
+		else if (keyCode == KeyEvent.VK_J) {
+			
+		}
+		
+		//move light0 down
+		else if (keyCode == KeyEvent.VK_K) {
+			light0_position[1] -= lightspeed;
+		}
+		
+		//move light0 right
+		else if (keyCode == KeyEvent.VK_L) {
+	
 		}
 	}
 
