@@ -68,8 +68,13 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	
 	//speed for camera movement
 	private static float speed = 0.2f;
-	//camera angle increment in degrees
+	//camera angle increment (left-right) in degrees
 	private static float rot_speed = 1.0f;
+	//camera angle increment (up-down) in degrees
+	private static float updown_speed = 0.2f;
+	//Bounds for looking up and down
+	private static final float MAXUP = 4.0f;
+	private static final float MAXDOWN = -4.0f;
 	//left-right rotation
 	private static float xzIncr = 0;
 	//up-down rotation
@@ -197,7 +202,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		//Calculate time since start of simulation
 		long currentTime = System.currentTimeMillis();
-		float timeDiff = (currentTime - initialTime) / 1000.f;
+		//float timeDiff = (currentTime - initialTime) / 1000.f;
 		
 		frames++;
 		
@@ -220,8 +225,10 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		// place object into the scene
 		gl.glLoadIdentity();
 		
+		gl.glRotatef(0.0f, 0.0f, 1.0f, 0.0f);
+		
 		glu.gluLookAt(	camera_position[0], camera_position[1], camera_position[2],
-						center_position[0], center_position[1], center_position[2],
+						center_position[0], center_position[1]+yzIncr, center_position[2],
 						camera_orientation[0], camera_orientation[1], camera_orientation[2]);
 
 		
@@ -527,6 +534,28 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 	}
 	
+	/*
+	 * Calculates the new center position and sets it.
+	 */
+	private void updateCenterPosition() {
+		
+		//Calculate the radius
+		float viewdir[] = new float[3];
+		VectorUtil.subVec3(viewdir, center_position, camera_position);
+		float radius = VectorUtil.normVec3(viewdir);
+		
+		//Calculate the angles
+		float phi = xzIncr * (float) Math.PI / 180.0f;
+		//float theta = yzIncr * (float) Math.PI / 180.0f;
+		
+		//Update the center position
+		center_position[0] = camera_position[0];
+		center_position[0] += radius * (float)Math.sin(phi);
+		center_position[2] = camera_position[2];
+		center_position[2] += radius * (float)Math.cos(phi);
+	}
+	
+	
 	
 	@Override
 	public void keyPressed(KeyEvent e) {
@@ -618,78 +647,48 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			center_position[1] -= speed;
 		}
 		
-		//TODO adapt to sphere calculations (3D)
-		
 		// turn left
 		else if (keyCode == KeyEvent.VK_A) {
 			//rotate by rot_speed degrees to the left
-			//get the radius of the rotation circle
-			float viewdir[] = new float[3];
-			VectorUtil.subVec3(viewdir, center_position, camera_position);
-			float radius = VectorUtil.normVec3(viewdir);
-			
 			//update left-right rotation offset
 			xzIncr += rot_speed;
-			if (xzIncr > 360.0f) xzIncr -= 360.0f;
-			float angle = xzIncr * (float) Math.PI / 180.0f;
+			if (xzIncr >= 360.0f) xzIncr -= 360.0f;
 			
 			//calculate new center position
-			center_position[0] = camera_position[0] + radius * (float) Math.sin(angle);
-			center_position[2] = camera_position[2] + radius * (float) Math.cos(angle);
+			updateCenterPosition();
 		}
 		
 		// turn right
 		else if (keyCode == KeyEvent.VK_D) {
 			//rotate by rot_speed degrees to the right
-			//get the radius of the rotation circle
-			float viewdir[] = new float[3];
-			VectorUtil.subVec3(viewdir, center_position, camera_position);
-			float radius = VectorUtil.normVec3(viewdir);
-			
 			//update the left-right rotation offset
 			xzIncr -= rot_speed;
-			if (xzIncr < -360.0f) xzIncr += 360.0f;
-			float angle = xzIncr * (float) Math.PI / 180.0f;
+			if (xzIncr <= -360.0f) xzIncr += 360.0f;
 			
 			//calculate new center position
-			center_position[0] = camera_position[0] + radius * (float) Math.sin(angle);
-			center_position[2] = camera_position[2] + radius * (float) Math.cos(angle);
+			updateCenterPosition();
 		}
 		
 		// turn up
 		else if (keyCode == KeyEvent.VK_W) {
-			//rotate by rot_speed degrees up
-			//get the radius of the rotation circle
-			float viewdir[] = new float[3];
-			VectorUtil.subVec3(viewdir, center_position, camera_position);
-			float radius = VectorUtil.normVec3(viewdir);
-			
+			//rotate by updown_speed degrees up
 			//update the up-down rotation offset
-			yzIncr += rot_speed;
-			if (yzIncr > 360.0f) yzIncr -= 360.0f;
-			float angle = yzIncr * (float) Math.PI / 180.0f;
-			
+			if (yzIncr <= MAXUP - updown_speed)
+				yzIncr += updown_speed;
+
 			//calculate new center position
-			center_position[1] = camera_position[1] + radius * (float) Math.sin(angle);
-			center_position[2] = camera_position[2] + radius * (float) Math.cos(angle);
+			updateCenterPosition();
 		}
 		
 		// turn down
 		else if (keyCode == KeyEvent.VK_S) {
-			//rotate by rot_speed degrees down
-			//get the radius of the rotation circle
-			float viewdir[] = new float[3];
-			VectorUtil.subVec3(viewdir, center_position, camera_position);
-			float radius = VectorUtil.normVec3(viewdir);
-			
+			//rotate by updown_speed degrees down
 			//update the up-down rotation offset
-			yzIncr -= rot_speed;
-			if (yzIncr < -360.0f) yzIncr += 360.0f;
-			float angle = yzIncr * (float) Math.PI / 180.0f;
-			
+			if (yzIncr >= MAXDOWN + updown_speed)
+				yzIncr -= updown_speed;
+
 			//calculate new center position
-			center_position[1] = camera_position[1] + radius * (float) Math.sin(angle);
-			center_position[2] = camera_position[2] + radius * (float) Math.cos(angle);
+			updateCenterPosition();
 		}
 		
 		//toggle ground
