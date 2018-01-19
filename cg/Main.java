@@ -99,6 +99,15 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	private static int frames, fps;
 	
 	
+	//Variables for cube
+	//	Center of cube
+	private static float cube_center[] = {0.0f, 0.75f, 2.0f};
+	//	Cube rotation
+	private static float cube_incr = 3.0f;
+	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
+	private static int mouseX = 0, mouseY = 0;
+	
+	
 	//Light calculation - variables for properties
 	//	First light source: light0 (spotlight directed to center of cube)
 	//	Position: w=0->directed light source (position=direction) 
@@ -110,15 +119,15 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	private static float light0_direction[] = {0.0f, 0.0f, 0.0f};			//XYZ
 	private static float light0_cutoff = 25.0f;
 	private static float light0_exponent = 2.0f;
-	private static float lightspeed = 0.5f;		//Speed for cameramovement
-	
-	//Variables for cube
-	//	Center of cube
-	private static float cube_center[] = {0.0f, 0.75f, 2.0f};
-	//	Cube rotation
-	private static float cube_incr = 3.0f;
-	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
-	private static int mouseX = 0, mouseY = 0;
+	//	Speed for lightmovement
+	private static float lightspeed = 0.5f;
+	//	Radius for light movement
+	private static float lightradius = light0_position[1] - cube_center[1];
+	private static final float LIGHTMAXUP = 10.0f;
+	private static final float LIGHTMAXDOWN = 3.0f;
+	//	Left-right rotation of the light
+	private static float lightrot = 0.0f;
+
 	
 	
 	/*
@@ -224,8 +233,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		// place object into the scene
 		gl.glLoadIdentity();
-		
-		gl.glRotatef(0.0f, 0.0f, 1.0f, 0.0f);
 		
 		glu.gluLookAt(	camera_position[0], camera_position[1], camera_position[2],
 						center_position[0], center_position[1]+yzIncr, center_position[2],
@@ -511,8 +518,8 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			float cone_direction[] = {0.0f, 0.0f, 1.0f};
 			
 			//angle between the vectors = acos(dotproduct of both vectors) in rad!
-			float angle = VectorUtil.angleVec3(cone_direction, light0_direction);
-			angle = angle * 180.0f / (float) Math.PI;
+			double angle = VectorUtil.angleVec3(cone_direction, light0_direction);
+			angle = angle * 180.0f / Math.PI;
 			
 			//cross product yields (orthogonal) rotation vector, normalized
 			float[] rotVec = new float[3];
@@ -520,7 +527,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			VectorUtil.normalizeVec3(rotVec);
 			
 			//now rotate around the rotation vector
-			gl.glRotatef(-angle, rotVec[0], rotVec[1], rotVec[2]);
+			gl.glRotatef((float)-angle, rotVec[0], rotVec[1], rotVec[2]);
 			
 			//set the material
 			gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
@@ -545,8 +552,8 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		float radius = VectorUtil.normVec3(viewdir);
 		
 		//Calculate the angles
-		float phi = xzIncr * (float) Math.PI / 180.0f;
-		//float theta = yzIncr * (float) Math.PI / 180.0f;
+		double phi = xzIncr * Math.PI / 180.0f;
+		//double theta = yzIncr * Math.PI / 180.0f;
 		
 		//Update the center position
 		center_position[0] = camera_position[0];
@@ -555,6 +562,18 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		center_position[2] += radius * (float)Math.cos(phi);
 	}
 	
+	
+	
+	/*
+	 * Update the light position
+	 */
+	private void updateLightPosition() {
+		//rotation angle for xy
+		double angle = lightrot * Math.PI / 180.0f;
+		//set light0's new positions
+		light0_position[1] = cube_center[1] + lightradius * (float)Math.cos(angle);
+		light0_position[0] = cube_center[0] + lightradius * (float)Math.sin(angle);
+	}
 	
 	
 	@Override
@@ -716,25 +735,46 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		//move light0 up
 		else if (keyCode == KeyEvent.VK_I) {
-			light0_position[1] += lightspeed;
+			//increment lightradius if in bounds
+			if (lightradius <= LIGHTMAXUP + lightspeed)
+				lightradius += lightspeed;
+			
+			updateLightPosition();
 		}
 		
 		//move light0 left 
 		else if (keyCode == KeyEvent.VK_J) {
-			
+			lightrot += lightspeed;
+			updateLightPosition();
 		}
 		
 		//move light0 down
 		else if (keyCode == KeyEvent.VK_K) {
-			light0_position[1] -= lightspeed;
+			//decrement lightradius if in bounds
+			if (lightradius >= LIGHTMAXDOWN - lightspeed)
+				lightradius -= lightspeed;
+			
+			updateLightPosition();
 		}
 		
 		//move light0 right
 		else if (keyCode == KeyEvent.VK_L) {
-	
+			lightrot -= lightspeed;
+			updateLightPosition();
+		}
+		
+		//reset light to default position
+		else if (keyCode == KeyEvent.VK_X) {
+			light0_position[0] = 0.0f;
+			light0_position[1] = 4.0f;
+			light0_position[2] = 2.0f;
+			
+			lightradius = light0_position[1] - cube_center[1];
+			lightrot = 0.0f;
 		}
 	}
-
+	
+	
 	@Override
 	public void keyReleased(KeyEvent arg0) {
 		int keyCode = arg0.getKeyCode();
