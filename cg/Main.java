@@ -1,26 +1,18 @@
-import static javax.swing.JFrame.EXIT_ON_CLOSE;
-
-import java.awt.BorderLayout;
-import java.awt.Font;
-import java.awt.Label;
-import java.awt.TextField;
-import java.awt.Toolkit;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
-import java.awt.event.MouseMotionListener;
+import java.awt.*;
+import java.awt.event.*;
+import java.nio.FloatBuffer;
 import java.util.Arrays;
+import java.util.Random;
 
 import javax.swing.JFrame;
 
+import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2;
 import com.jogamp.opengl.GLAutoDrawable;
 import com.jogamp.opengl.GLEventListener;
 import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.glu.GLU;
 import com.jogamp.opengl.util.FPSAnimator;
-import com.jogamp.opengl.util.awt.TextRenderer;
 import com.jogamp.opengl.util.gl2.GLUT;
 import com.jogamp.opengl.math.VectorUtil;
 
@@ -41,17 +33,12 @@ d - rotate right
 w - rotate up
 s - rotate down
 
-b - toggle ground
-capslock - toggle mouse rotation (capslock on -> mouse rotation off)
-
-Mouse rotation (mouse move) of the cube only when shift is down
-Mouse rotation (mouse dragged) of cube only when control is down
+mouse rotation of the scene if shift is pressed
 
 
 i - move light up
-j - move light left
 k - move light down
-l - move light right
+x - reset light position
 */
 
 public class Main implements GLEventListener, KeyListener, MouseListener, MouseMotionListener  {
@@ -81,53 +68,42 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	private static float yzIncr = 0;
 	
 	
-	//Text field
-	private static TextField tf;
-	
-	//Boolean flag for toggling
-	private static boolean toggleGround = false;
-	
-	//Renderer
-	private static TextRenderer renderer; 
-	private static boolean rendererActivated = false;
-	private static int rendererX, rendererY;
-	private static int canvasHeight;
-	
-	//FPS calculation
-	private static long initialTime;
-	private static long lastTime;
-	private static int frames, fps;
-	
-	
 	//Variables for cube
 	//	Center of cube
 	private static float cube_center[] = {0.0f, 0.75f, 2.0f};
 	//	Cube rotation
 	private static float cube_incr = 3.0f;
-	private static float cube_rotx = 0.0f, cube_roty = 0.0f, cube_rotz = 0.0f;
+	
+	//Rotation of the scene with the mouse
 	private static int mouseX = 0, mouseY = 0;
+	private static float scene_rotx = 0.0f, scene_roty = 0.0f;
+	private static float scene_rotIncr = 2.0f;
+	
 	
 	
 	//Light calculation - variables for properties
-	//	First light source: light0 (spotlight directed to center of cube)
+	//	First light source: light0 (point light)
 	//	Position: w=0->directed light source (position=direction) 
-	private static float light0_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};		//RGBA
+	private static float light0_ambient[] = {0.5f, 0.5f, 0.5f, 1.0f};		//RGBA
 	private static float light0_diffuse[] = {1.0f, 1.0f, 1.0f, 1.0f};		//RGBA
-	private static float light0_specular[] = {0.75f, 0.75f, 0.75f, 1.0f};	//RGBA
-	private static float light0_emissive[] = {0.8f, 0.8f, 0.8f, 1.0f};		//RGBA
-	private static float light0_position[] = {0.0f, 4.0f, 2.0f, 1.0f};		//XYZW (homogene Coord.)
-	private static float light0_direction[] = {0.0f, 0.0f, 0.0f};			//XYZ
-	private static float light0_cutoff = 25.0f;
-	private static float light0_exponent = 2.0f;
+	private static float light0_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};		//RGBA
+	private static float light0_emissive[] = {1.0f, 1.0f, 1.0f, 1.0f};		//RGBA
+	private static float light0_position[] = {0.0f, 6.0f, 0.0f, 1.0f};		//XYZW (homogene Coord.)
+
 	//	Speed for lightmovement
-	private static float lightspeed = 0.5f;
+	private static float lightspeed = 0.2f;
 	//	Radius for light movement
 	private static float lightradius = light0_position[1] - cube_center[1];
 	private static final float LIGHTMAXUP = 10.0f;
 	private static final float LIGHTMAXDOWN = 3.0f;
-	//	Left-right rotation of the light
+	//	Rotation of the light
 	private static float lightrot = 0.0f;
 
+	
+	
+	private static float[] randomParameters;
+	
+	
 	
 	
 	/*
@@ -147,21 +123,13 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		final int width = 800;
 	    final int height = 600;
-	    tf = new TextField(30);
-	    Label label = new Label("Press shift & move the mouse or press ctrl"
-	    					+ "& drag the mouse to move the cube");
 	    
-	    //Init renderer
-	    Font font = new Font("TimesRoman", Font.BOLD, 16);
-	    renderer = new TextRenderer(font);
 		
 		// create main window and insert the canvas into it
 		JFrame frame = new JFrame("OpenGL Fenster");
 		frame.setSize(width, height);
-		frame.setDefaultCloseOperation(EXIT_ON_CLOSE);
+		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.getContentPane().add(canvas);
-		frame.add(tf, BorderLayout.SOUTH);
-		frame.add(label, BorderLayout.NORTH);
 		
 		// show the main window
 		frame.setVisible(true);
@@ -170,107 +138,132 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		canvas.setFocusable(true);
 		canvas.requestFocus();
 		
-		//init fps calculation
-		initialTime = System.currentTimeMillis();
-		lastTime = initialTime;
-		
-		//Needed for Renderer drawing point
-		canvasHeight = canvas.getHeight();
 	}
 
 	
 	public void init(GLAutoDrawable drawable) {
 		GL2 gl = drawable.getGL().getGL2();
 		
-		// background color
-		gl.glClearColor(0.1f, 0.5f, 0.5f, 1.0f);
+		// background color = dark grey
+		gl.glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
 		
-		// enable backface culling (default is off)
-		//gl.glEnable(GL2.GL_CULL_FACE);
-		
-		// enable z-buffer (default is off)
+		// enable depthtest (default is off)
 		gl.glEnable(GL2.GL_DEPTH_TEST);
 		
 		//For light calculation
 		gl.glEnable(GL2.GL_LIGHTING);
 		gl.glEnable(GL2.GL_NORMALIZE);
 		initLights(gl);
-		
-		//For materials
+	
 		gl.glDisable(GL2.GL_COLOR_MATERIAL);
-		gl.glEnable(GL2.GL_BLEND);
-		gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		
+		//Enable fog
+		gl.glEnable(GL2.GL_FOG);
+		
+		
+		//Random parameter calculation
+		Random r = new Random();
+		//amount of rectangles (min:5, max:25)
+		int amount = 5 + (int) (r.nextFloat() * 20);
+		randomParameters = new float[amount * 4];	//each rect has 4 parameters
+		System.out.println("Amount="+amount);
+		
+		//Calculate the 4 parameters for random position & size (used later)	
+		for (int i = 0; i < amount * 4; i += 4) {
+			//get random position in the area [-10,-10]x[10,10]
+			randomParameters[i] = -10 + r.nextFloat() * 20;
+			randomParameters[i+1] = -10 + r.nextFloat() * 20;
+			
+			//get random size of the rectangle
+			randomParameters[i+2] = 0.5f + r.nextFloat() * 1.5f;
+			randomParameters[i+3] = 0.5f + r.nextFloat() * 1.5f;
+		}
+		
+		System.out.println(Arrays.toString(randomParameters));
 	}
 	
 	
 	public void display(GLAutoDrawable drawable) {
 
 		GL2 gl = drawable.getGL().getGL2();
-		
-		
-		//Calculate time since start of simulation
-		long currentTime = System.currentTimeMillis();
-		//float timeDiff = (currentTime - initialTime) / 1000.f;
-		
-		frames++;
-		
-		//Measure FPS once per sec
-		if (currentTime - lastTime > 1000) {
-		
-			fps = (int) (frames / ((currentTime - lastTime) / 1000.f));
-
-			//Update variables
-			lastTime = currentTime;
-			frames = 0;
-			
-		}
-		
-		
-		
+	
 		// clear the framebuffer
 		gl.glClear(GL2.GL_COLOR_BUFFER_BIT | GL2.GL_DEPTH_BUFFER_BIT);
 		
 		// place object into the scene
 		gl.glLoadIdentity();
 		
+		
 		glu.gluLookAt(	camera_position[0], camera_position[1], camera_position[2],
 						center_position[0], center_position[1]+yzIncr, center_position[2],
 						camera_orientation[0], camera_orientation[1], camera_orientation[2]);
 
+		
+		//for help purposes
+		//drawCoordinateLines(gl);
+		
+		
+		//rotate the scene
+		gl.glRotatef(scene_rotx, 1, 0, 0);
+		gl.glRotatef(scene_roty, 0, 1, 0);
+		
 		
 		//Ground
 		gl.glPushMatrix();
 			gl.glTranslatef(0.0f, 0.0f, 2.0f);
 			drawGround(gl);
 		gl.glPopMatrix();
-	 
-		//Cube (Material Ruby, blending -> ruby is transparent)
+			
+		
+		//Bridge over troubled water
 		gl.glPushMatrix();
-			gl.glTranslatef(cube_center[0], cube_center[1], cube_center[2]);
-			gl.glRotatef(cube_rotx, 1.0f, 0.0f, 0.0f);
-			gl.glRotatef(cube_roty, 0.0f, 1.0f, 0.0f);
-			gl.glRotatef(cube_rotz, 0.0f, 0.0f, 1.0f);
-			drawCube(gl);
+			gl.glTranslatef(-4, 0, 0);
+			gl.glRotatef(90, 0, 1, 0);
+			drawBridge(gl);
 		gl.glPopMatrix();
 		
 		
-		//Visualize light0 with a solid cone (also updates light0's pos. & dir.)
-		visualize(gl);
+		//TrafficLight
+		gl.glPushMatrix();
+			gl.glTranslatef(2, 0, -2);
+			gl.glRotatef(-90, 1, 0, 0);		//stand upwards
+			drawTrafficLight(gl);
+		gl.glPopMatrix();
 		
 		
-		//Renderer activated? Then draw fps on screen
-		if (rendererActivated) {
-			renderer.beginRendering(drawable.getSurfaceWidth(), drawable.getSurfaceHeight());
-			renderer.setColor(1.0f, 0.0f, 0.0f, 0.8f);
-			renderer.draw("FPS: "+fps, rendererX, rendererY);
-			renderer.endRendering();
-		}
+		//spread some rectangles
+		gl.glPushMatrix();
+			drawRects(gl, randomParameters);
+		gl.glPopMatrix();
 		
+		
+		//blending for transparent objects in the following block
+		gl.glEnable(GL2.GL_BLEND);
+		gl.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
+		
+			//Visualize light0 with a solid sphere
+			visualize(gl);
+		
+		gl.glDisable(GL2.GL_BLEND);
+		
+		
+		//set light position
+		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_POSITION, light0_position, 0);
+		
+		
+		//create the fog
+		someFog(gl);
 		
 		//Finish
 		gl.glFlush();
+		
+		//increase light rotation factor & update it's position
+		lightrot += lightspeed;
+		if (lightrot >= 360.0f)
+			lightrot -= 360.0f;
+		updateLightPosition();
 	}
+	
 	
 	/*
 	 * When the window changes its position or shape the projection transformation
@@ -292,7 +285,69 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		gl.glLoadIdentity();
 	}
 
-
+	
+	/*
+	 * Help method to draw coordinate lines
+	 * x-axis is red
+	 * y-axis is green
+	 * z-axis is blue
+	 */
+	private void drawCoordinateLines(GL2 gl) {
+		
+		float min = -5.0f;
+		float max = 5.0f;
+		
+		//thicker lines
+		gl.glLineWidth(3.0f);
+		
+		gl.glColor3f(1.0f,0.0f,0.0f); 		//red
+	    gl.glBegin(GL2.GL_LINES);
+	    	//x-axis
+	    	gl.glVertex3f(max, 0, 0);
+	    	gl.glVertex3f(min, 0, 0);
+	 
+	    	// arrow
+	    	gl.glVertex3f(max, 0, 0);
+	    	gl.glVertex3f(max-1, 1, 0);
+	    	gl.glVertex3f(max, 0, 0);
+	    	gl.glVertex3f(max-1, -1, 0);
+	    gl.glEnd();
+	    	 
+	  
+	    gl.glColor3f(0.0f, 1.0f, 0.0f); 	//green
+	    gl.glBegin(GL2.GL_LINES);
+	    	//y-axis
+	    	gl.glVertex3f(0, max, 0);
+	    	gl.glVertex3f(0, min, 0);
+	    	
+	    	// arrow
+	    	gl.glVertex3f(0, max, 0);
+	    	gl.glVertex3f(1, max-1, 0);
+	    	gl.glVertex3f(0, max, 0);
+	    	gl.glVertex3f(-1, max-1, 0);
+	    	
+	    gl.glEnd();
+	 
+	 
+	    gl.glColor3f(0.0f, 0.0f, 1.0f); 	//blue
+	    gl.glBegin(GL2.GL_LINES);
+	    	//z-axis
+	    	gl.glVertex3f(0, 0, max);
+	    	gl.glVertex3f(0, 0, min);
+	    	
+	    	// arrow
+	    	gl.glVertex3f(0, 0, max);
+	    	gl.glVertex3f(1, 0, max-1);
+	    	gl.glVertex3f(0, 0, max);
+	    	gl.glVertex3f(-1, 0, max-1);
+	    	
+	    gl.glEnd();
+	    //reset line width
+	    gl.glLineWidth(1.0f);
+	}
+	
+	
+	
 	/*
 	 * Init all the needed light sources.
 	 */
@@ -302,75 +357,46 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		gl.glEnable(GL2.GL_LIGHT0);
 		
 		//Init Light0
-		//Ambient, diffuse, specular and emissive part of the light
+		//	Ambient, diffuse, specular and emissive part of the light
 		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_AMBIENT, light0_ambient, 0);
 		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_DIFFUSE, light0_diffuse, 0);
 		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPECULAR, light0_specular, 0);
 		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_EMISSION, light0_emissive, 0);
 		
-		
-		//Position of the light
+		//	Position of the light
 		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_POSITION, light0_position, 0);
-		
-		//Cutoff and exponent of the light
-		gl.glLightf(GL2.GL_LIGHT0, GL2.GL_SPOT_CUTOFF, light0_cutoff);
-		gl.glLightf(GL2.GL_LIGHT0, GL2.GL_SPOT_EXPONENT, light0_exponent);
-		
-		//Direction of the light: towards the center of the cube
-		getLight0Dir();
-		gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPOT_DIRECTION, light0_direction, 0);
 	}
 	
 	
 	/*
-	 *  draw a ground
+	 *  Draw a grid ground
 	 */
 	public void drawGround(GL2 gl) {
 
-		//Material for ground: chrome
-		float ambient[] = {0.25f, 0.25f, 0.25f, 1.0f};
-		float diffuse[] = {0.4f, 0.4f, 0.4f, 1.0f};
-		float specular[] = {0.77f, 0.77f, 0.77f, 1.0f};
-		float shininess = 76.8f;
+		//Grid ground
+		float 	x1 = -1000.f, x2 = 1000.f, z1 = -1000.f, z2 = 1000.f;
+		float width = 0.5f;
 		
-		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
-		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_DIFFUSE, diffuse, 0);
-		gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_SPECULAR, specular, 0);
-		gl.glMaterialf(GL2.GL_FRONT, GL2.GL_SHININESS, shininess);
-		
-		
-		if (!toggleGround) {
-			gl.glBegin(GL2.GL_QUADS);
-				gl.glNormal3f(0.0f, 1.0f, 0.0f);	//Normal of the ground
-				gl.glVertex3f(-5.0f, 0.0f, 5.0f);
-				gl.glVertex3f( 5.0f, 0.0f, 5.0f);
-				gl.glVertex3f( 5.0f, 0.0f,-5.0f);
-				gl.glVertex3f(-5.0f, 0.0f,-5.0f);
-			gl.glEnd();
-		} else {
+		//Draw black grid
+		gl.glEnable(GL2.GL_COLOR_MATERIAL);
+		gl.glBegin(GL2.GL_LINES);
+			gl.glColor3f(0.f, 0.f, 0.f);
+			gl.glNormal3f(0.0f, 1.0f, 0.0f);	//Normal
 			
-			//Grid ground
-			float 	x1 = -1000.f, x2 = 1000.f, z1 = -1000.f, z2 = 1000.f;
-			float width = 0.5f;
+			//Draw parallel to the z-axis
+			for (float x = x1; x <= x2; x += width) {
+				gl.glVertex3f(x, 0.f, z1);
+				gl.glVertex3f(x, 0.f, z2);
+			}
 			
-			//Draw grid
-			gl.glBegin(GL2.GL_LINES);
-				gl.glColor3f(0.f, 0.f, 0.f);
-				gl.glNormal3f(0.0f, 1.0f, 0.0f);	//Normal
-				
-				//Draw parallel to the z-axis
-				for (float x = x1; x <= x2; x += width) {
-					gl.glVertex3f(x, 0.f, z1);
-					gl.glVertex3f(x, 0.f, z2);
-				}
-				
-				//Draw parallel to the x-axis
-				for (float z = z1; z <= z2; z += width) {
-					gl.glVertex3f(x1, 0.f, z);
-					gl.glVertex3f(x2, 0.f, z);
-				}
-			gl.glEnd();
-		}
+			//Draw parallel to the x-axis
+			for (float z = z1; z <= z2; z += width) {
+				gl.glVertex3f(x1, 0.f, z);
+				gl.glVertex3f(x2, 0.f, z);
+			}
+		gl.glEnd();
+		gl.glDisable(GL2.GL_COLOR_MATERIAL);
+		
 	}
 
 	
@@ -400,7 +426,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		//draw cube with normal vectors
 		gl.glBegin(GL2.GL_QUADS);
 			//front
-			gl.glColor3f(0, 0, 0);
 			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, FRONT_Z);
 			gl.glNormal3f(0.0f, 0.0f, 1.0f);
@@ -411,7 +436,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			gl.glVertex3f(LEFT_X, LOWER_Y, FRONT_Z);
 
 			//left side
-			gl.glColor3f(1, 0, 0);
 			gl.glNormal3f(-1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, FRONT_Z);
 			gl.glNormal3f(-1.0f, 0.0f, 0.0f);
@@ -422,7 +446,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			gl.glVertex3f(LEFT_X, LOWER_Y, FRONT_Z);
 
 			//right side
-			gl.glColor3f(0, 1, 0);
 			gl.glNormal3f(1.0f, 0.0f, 0.0f);
 			gl.glVertex3f(RIGHT_X, UPPER_Y, FRONT_Z);
 			gl.glNormal3f(1.0f, 0.0f, 0.0f);
@@ -433,7 +456,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			gl.glVertex3f(RIGHT_X, LOWER_Y, FRONT_Z);
 
 			//back side
-			gl.glColor3f(0, 0, 1);
 			gl.glNormal3f(0.0f, 0.0f, 1.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, BACK_Z);
 			gl.glNormal3f(0.0f, 0.0f, 1.0f);
@@ -444,7 +466,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			gl.glVertex3f(LEFT_X, LOWER_Y, BACK_Z);
 
 			//top side
-			gl.glColor3f(0, 1, 1);
 			gl.glNormal3f(0.0f, 1.0f, 0.0f);
 			gl.glVertex3f(LEFT_X, UPPER_Y, FRONT_Z);
 			gl.glNormal3f(0.0f, 1.0f, 0.0f);
@@ -455,7 +476,6 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			gl.glVertex3f(RIGHT_X, UPPER_Y, FRONT_Z);
 
 			//bottom side
-			gl.glColor3f(1, 0, 1);
 			gl.glNormal3f(0.0f, 0.0f, -1.0f);
 			gl.glVertex3f(LEFT_X, LOWER_Y, FRONT_Z);
 			gl.glNormal3f(0.0f, 0.0f, -1.0f);
@@ -471,78 +491,194 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	
 	
 	/*
-	 * Calculate the direction for light0 (from light0_position to center of the cube).
-	 * Saves the calculated directions in the float array light0_direction.
+	 * Draw a traffic light. The base is at origin, standing in positive
+	 * y direction (upvector).
 	 */
-	private void getLight0Dir() {
-		//Calculate vector from the position of the light to the center of the cube
-		//light0_direction = cube_center - light0_position
-		for (int i = 0; i < 3; i++)
-			light0_direction[i] = cube_center[i] - light0_position[i];
-		VectorUtil.normalizeVec3(light0_direction);
+	private void drawTrafficLight(GL2 gl) {
+		
+		//Material: dark green plastic
+		float amb[]={0.0f, 0.11f, 0.0f, 1.0f};
+		float diff[]={0.05f, 0.3f, 0.05f, 1.0f};
+		float spec[]={0.4f, 0.55f, 0.4f, 1.0f};
+		float shine = 80f;
+		gl.glMaterialfv(GL2.GL_FRONT_AND_BACK, GL2.GL_AMBIENT, amb, 0);
+		gl.glMaterialfv(GL2.GL_FRONT_AND_BACK, GL2.GL_DIFFUSE, diff, 0);
+		gl.glMaterialfv(GL2.GL_FRONT_AND_BACK, GL2.GL_SPECULAR, spec, 0);
+		gl.glMaterialf(GL2.GL_FRONT_AND_BACK, GL2.GL_SHININESS, shine);
+		
+		//base of traffic light
+		glut.glutSolidCylinder(0.4f, 0.1f, 100, 100);
+		//stake of traffic light
+		glut.glutSolidCylinder(0.075f, 2.0f, 100, 100);
+		
+		
+		//top of traffic light => 3 stacked cubes (colored)		
+		gl.glEnable(GL2.GL_COLOR_MATERIAL);
+		gl.glPushMatrix();
+			//1st cube (green)
+			gl.glTranslatef(0.0f, 0.0f, 2.0f);		//set on top of stake
+			//gl.glScalef(0.5f, 0.5f, 1.0f);
+			gl.glColor3f(0, 1, 0);
+			glut.glutSolidCube(0.5f);
+			
+			//2nd cube (yellow)
+			gl.glTranslatef(0.0f, 0.0f, 0.5f);		//stack on top of last cube
+			gl.glColor3f(1, 1, 0);
+			glut.glutSolidCube(0.5f);				
+			
+			//3rd cube (red)
+			gl.glTranslatef(0.0f, 0.0f, 0.5f);		//stack on top of last cube
+			gl.glColor3f(1, 0, 0);
+			glut.glutSolidCube(0.5f);	
+		gl.glPopMatrix();
+		gl.glDisable(GL2.GL_COLOR_MATERIAL);
+	}
+	
+	
+	
+	/*
+	 * Draw a bridge starting at origin in direction of z-axis.
+	 * The width (along x-axis) is default set to 2 (from x=-1 to x=1).
+	 * The length (along z-axis) is default set to 2 (from z=0 to z=2).
+	 */
+	private void drawBridge(GL2 gl) {
+		
+		//Controll points for Bezier-Grid
+		float[] ctrlPoints = {
+				//First line segment
+				-1.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 0.0f,
+				1.0f, 0.0f, 0.0f,
+				//Second line segment
+				-1.0f, 1.0f, 1.0f,
+				0.0f, 1.0f, 1.0f,
+				1.0f, 1.0f, 1.0f,
+				//Third line segment
+				-1.0f, 0.0f, 2.0f,
+				0.0f, 0.0f, 2.0f,
+				1.0f, 0.0f, 2.0f,
+		};
+		
+		//Transform into FloatBuffer
+		FloatBuffer buffer = Buffers.newDirectFloatBuffer(ctrlPoints);
+		
+		//Activate & set 2D-Evaluator for creation of the Bezier-Grid
+		gl.glEnable(GL2.GL_MAP2_VERTEX_3);
+		gl.glMap2f(GL2.GL_MAP2_VERTEX_3, 0.0f, 1.0f, 3, 3, 0.0f, 1.0f, 9, 3, buffer);
+
+		
+		
+		//Create two-dimensional point-grid & fill it
+		int n = 20;
+		gl.glMapGrid2f(n, 0.0f, 1.0f, n, 0.0f, 1.0f);
+		gl.glEnable(GL2.GL_COLOR_MATERIAL);
+		gl.glColor3f(0.55f, 0.0f, 0.0f);
+		gl.glEvalMesh2(GL2.GL_FILL, 0, n, 0, n);
+		gl.glDisable(GL2.GL_COLOR_MATERIAL);
+	}
+	
+	
+	
+	/*
+	 * Draw a random amount of randomly distributed, random size rectangles,
+	 * which are orthogonal to the ground. The parameter randoms[] defines
+	 * all the randomized values.
+	 */
+	private void drawRects(GL2 gl, float[] randoms) {
+		
+		//draw a random orthogonal rectangle
+		for (int i = 0; i < randoms.length; i += 4) {
+			gl.glPushMatrix();
+				//translate to random pos
+				gl.glTranslatef(randoms[i], 0, randoms[i+1]);
+				//scale to random size
+				gl.glScalef(randoms[i+2], randoms[i+3], 0);
+				drawOrthQuad(gl);
+			gl.glPopMatrix();
+		}
+				
 	}
 	
 	
 	/*
-	 * Visualize the light source GL2.GL_LIGHT0 with a cone. The base of the cone
-	 * is orthogonal to light0's direction. 
+	 * Draw a quad orthogonal to the ground.
+	 */
+	private void drawOrthQuad(GL2 gl) {
+		
+		float p[] = {
+			1.0f, 0.0f, 0.0f,
+			1.0f, 1.0f, 0.0f,
+			0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f
+		};
+		
+		gl.glBegin(GL2.GL_QUADS);
+			gl.glVertex3fv(p, 0);
+			gl.glVertex3fv(p, 3);
+			gl.glVertex3fv(p, 6);
+			gl.glVertex3fv(p, 9);
+		gl.glEnd();
+	}
+	
+	
+	/*
+	 * Renders some fog in the scene.
+	 */
+	private void someFog(GL2 gl) {
+		
+		//fog parameters: color, start & end (only lin. fog), density (only exp. fog)
+		float col[] = {0.9f, 0.9f, 0.9f, 1.0f};
+		float start = 7.0f;
+		float end = 15.0f;
+		float density = 0.1f;
+		
+		//set fog color
+		gl.glFogfv(GL2.GL_FOG_COLOR, col, 0);
+		
+		//set start and end of linear fog
+		gl.glFogf(GL2.GL_FOG_START, start);
+		gl.glFogf(GL2.GL_FOG_END, end);
+		
+		//set density of exponential fog
+		gl.glFogf(GL2.GL_FOG_DENSITY, density);
+		
+		//choose fog mode: GL_LINEAR/EXP/EXP2
+		gl.glFogi(GL2.GL_FOG_MODE, GL2.GL_EXP2);
+		
+	}
+	
+	
+	/*
+	 * Visualize the light source GL2.GL_LIGHT0 with a sphere ("sun"). 
 	 */
 	private void visualize(GL2 gl) {
 		
-		//Glut Solid Cone (white) to visualize the light source (light0)
-		float cone_radius = 0.4f;
-		float cone_height = 1.0f;
-		int cone_slices = 70;
-		int cone_stacks = 70;
+		//Glut Solid Sphere to visualize the light source (light0)
+		float sphere_radius = 0.3f;
+		int sphere_slices = 100;
+		int sphere_stacks = 100;
 		
 		
-		//Material: something transparent
-		float ambient[] = {0.0f, 0.0f, 0.0f, 0.0f};
-		float diffuse[] = {0.4f, 0.4f, 0.4f, 0.4f};
-		float specular[] = {0.3f, 0.3f, 0.3f, 0.4f};
-		float shininess = 32.0f;
+		//Material for the sphere
+		float ambAndDiff[] = {1.0f, 1.0f, 0.65f, 0.7f};
 		
 		
 		gl.glPushMatrix();
-		
-			//update light0's position & direction
-			getLight0Dir();
-			gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_POSITION, light0_position, 0);
-			gl.glLightfv(GL2.GL_LIGHT0, GL2.GL_SPOT_DIRECTION, light0_direction, 0);
-			
-			//translation to light0's position
+			//translation of the sphere to light0's position
 			gl.glTranslatef(light0_position[0], light0_position[1], light0_position[2]);
 			
-			//rotate the cone so that its base area is orthogonal to light0_direction
-			//"direction" of cone (from base to tip), normalized
-			float cone_direction[] = {0.0f, 0.0f, 1.0f};
-			
-			//angle between the vectors = acos(dotproduct of both vectors) in rad!
-			double angle = VectorUtil.angleVec3(cone_direction, light0_direction);
-			angle = angle * 180.0f / Math.PI;
-			
-			//cross product yields (orthogonal) rotation vector, normalized
-			float[] rotVec = new float[3];
-			VectorUtil.crossVec3(rotVec, cone_direction, light0_direction);
-			VectorUtil.normalizeVec3(rotVec);
-			
-			//now rotate around the rotation vector
-			gl.glRotatef((float)-angle, rotVec[0], rotVec[1], rotVec[2]);
-			
 			//set the material
-			gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT, ambient, 0);
-			gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_DIFFUSE, diffuse, 0);
-			gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_SPECULAR, specular, 0);
-			gl.glMaterialf(GL2.GL_FRONT, GL2.GL_SHININESS, shininess);
+			gl.glMaterialfv(GL2.GL_FRONT, GL2.GL_AMBIENT_AND_DIFFUSE, ambAndDiff, 0);
 			
-			//draw the cone
-			glut.glutSolidCone(cone_radius, cone_height, cone_slices, cone_stacks);
+			//draw the sphere
+			glut.glutSolidSphere(sphere_radius, sphere_slices, sphere_stacks);
+			
 		gl.glPopMatrix();
-		
 	}
 	
 	/*
-	 * Calculates the new center position and sets it.
+	 * Calculates the new center position (which is looked at) and sets it.
+	 * Needed for the movement through the scene.
 	 */
 	private void updateCenterPosition() {
 		
@@ -565,11 +701,18 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	
 	
 	/*
-	 * Update the light position
+	 * Update the light position according to the rotation
 	 */
 	private void updateLightPosition() {
-		//rotation angle for xy
-		double angle = lightrot * Math.PI / 180.0f;
+		//rotation angle for xy-plane
+		double angle;
+		
+		//mirror the light at yz-plane
+		if (lightrot >= 80 && lightrot <= 280)
+			lightrot = 280;
+			
+		angle = lightrot * Math.PI / 180.0f;
+		
 		//set light0's new positions
 		light0_position[1] = cube_center[1] + lightradius * (float)Math.cos(angle);
 		light0_position[0] = cube_center[0] + lightradius * (float)Math.sin(angle);
@@ -712,7 +855,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 		
 		//toggle ground
 		else if (keyCode == KeyEvent.VK_B) {
-			toggleGround = !toggleGround;
+			
 		}
 		
 		// reset the camera position and orientation
@@ -742,10 +885,10 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			updateLightPosition();
 		}
 		
-		//move light0 left 
+		//move light0 left - disabled 
 		else if (keyCode == KeyEvent.VK_J) {
-			lightrot += lightspeed;
-			updateLightPosition();
+			//lightrot += lightspeed;
+			//updateLightPosition();
 		}
 		
 		//move light0 down
@@ -757,23 +900,22 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			updateLightPosition();
 		}
 		
-		//move light0 right
+		//move light0 right - disabled
 		else if (keyCode == KeyEvent.VK_L) {
-			lightrot -= lightspeed;
-			updateLightPosition();
+			//lightrot -= lightspeed;
+			//updateLightPosition();
 		}
 		
 		//reset light to default position
 		else if (keyCode == KeyEvent.VK_X) {
 			light0_position[0] = 0.0f;
-			light0_position[1] = 4.0f;
-			light0_position[2] = 2.0f;
+			light0_position[1] = 6.0f;
+			light0_position[2] = 0.0f;
 			
 			lightradius = light0_position[1] - cube_center[1];
 			lightrot = 0.0f;
 		}
-	}
-	
+	}	
 	
 	@Override
 	public void keyReleased(KeyEvent arg0) {
@@ -798,14 +940,7 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 
 	@Override
 	public void mouseClicked(MouseEvent e) {
-		//Activate the renderer once, prints the fps at the location clicked at
-		if (!rendererActivated) {
-			rendererActivated = true;
-			rendererX = e.getX();
-			//Need to flip y coordinate (TextRenderer starts at lowerleft corner,
-			//  Canvas starts at upperleft corner!)
-			rendererY = canvasHeight - e.getY();
-		}
+		
 	}
 
 	@Override
@@ -831,38 +966,13 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 	@Override
 	public void mouseDragged(MouseEvent e) {
 		
-		//only do cube rotation if ctrl is down & capslock is NOT on
-		boolean capsOn = Toolkit.getDefaultToolkit().getLockingKeyState(KeyEvent.VK_CAPS_LOCK);
-		if (e.isControlDown() && !capsOn) {
-			
-			//save old mouse coordinates
-			int oldMouseX = mouseX;
-			int oldMouseY = mouseY;
-			
-			//Get mouse coordinates
-			mouseX = e.getX();
-			mouseY = e.getY();
-			
-			int diff = mouseX - oldMouseX;
-			if (diff > 0) 						//Mouse moved to the right
-				cube_roty += cube_incr;			//Rotate cube to the right
-			else if (diff < 0)					//Mouse moved to the left
-				cube_roty -= cube_incr;			//Rotate cube to the left
-			
-			diff = mouseY - oldMouseY;
-			if (diff > 0)						//Mouse moved up
-				cube_rotx -= cube_incr;			//Rotate cube up
-			else if (diff < 0)					//Mouse moved down
-				cube_rotx += cube_incr;			//Rotate cube down
-		}
 	}
 
 	@Override
 	public void mouseMoved(MouseEvent e) {
 		
-		//only do cube rotation if shift is down & capslock is NOT on
-		boolean capsOn = Toolkit.getDefaultToolkit().getLockingKeyState(KeyEvent.VK_CAPS_LOCK);
-		if (e.isShiftDown() && ! capsOn) {
+		//only do scene rotation if shift is down
+		if (e.isShiftDown()) {
 			
 			//save old mouse coordinates
 			int oldMouseX = mouseX;
@@ -874,15 +984,15 @@ public class Main implements GLEventListener, KeyListener, MouseListener, MouseM
 			
 			int diff = mouseX - oldMouseX;
 			if (diff > 0) 						//Mouse moved to the right
-				cube_roty += cube_incr;			//Rotate cube to the right
+				scene_roty += scene_rotIncr;	//Rotate scene to the right (around y-axis)
 			else if (diff < 0)					//Mouse moved to the left
-				cube_roty -= cube_incr;			//Rotate cube to the left
+				scene_roty -= scene_rotIncr;	//Rotate scene to the left (around y-axis)
 			
 			diff = mouseY - oldMouseY;
 			if (diff > 0)						//Mouse moved up
-				cube_rotx -= cube_incr;			//Rotate cube up
+				scene_rotx -= scene_rotIncr;	//Rotate scene up (around x-axis)
 			else if (diff < 0)					//Mouse moved down
-				cube_rotx += cube_incr;			//Rotate cube down
+				scene_rotx += scene_rotIncr;	//Rotate scene down (around x-axis)
 		}
 	}
 }
